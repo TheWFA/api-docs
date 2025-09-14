@@ -1,0 +1,487 @@
+import { useState } from 'react';
+import { z } from 'zod';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Plus, X, Calendar, Filter } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import qs from 'qs';
+
+// Mock MatchStatus enum - replace with your actual enum
+enum MatchStatus {
+    SCHEDULED = 'SCHEDULED',
+    LIVE = 'LIVE',
+    FINISHED = 'FINISHED',
+    CANCELLED = 'CANCELLED',
+    POSTPONED = 'POSTPONED',
+}
+
+const matchQuerySchema = z.object({
+    orderBy: z
+        .object({
+            date: z.enum(['asc', 'desc']).optional(),
+        })
+        .optional()
+        .default({
+            date: 'asc',
+        }),
+    date: z
+        .array(
+            z.object({
+                lt: z.date({ coerce: true }).optional(),
+                eq: z.date({ coerce: true }).optional(),
+                gt: z.date({ coerce: true }).optional(),
+            })
+        )
+        .optional(),
+    id: z.array(z.string()).optional(),
+    team: z.array(z.string()).optional(),
+    competition: z.array(z.string()).optional(),
+    season: z.array(z.string()).optional(),
+    group: z.array(z.string()).optional(),
+    court: z.array(z.string()).optional(),
+    status: z.array(z.nativeEnum(MatchStatus)).optional(),
+    itemsPerPage: z.number().min(5).max(500).default(20),
+    page: z.number().min(0).default(0),
+});
+
+type MatchQuery = z.infer<typeof matchQuerySchema>;
+
+interface DateFilter {
+    lt?: string;
+    eq?: string;
+    gt?: string;
+}
+
+function QueryBuilder() {
+    const [query, setQuery] = useState<Partial<MatchQuery>>({
+        orderBy: { date: 'asc' },
+        itemsPerPage: 20,
+        page: 0,
+    });
+
+    const [dateFilters, setDateFilters] = useState<DateFilter[]>([]);
+    const [arrayFields, setArrayFields] = useState<{
+        [key: string]: string[];
+    }>({
+        id: [],
+        team: [],
+        competition: [],
+        season: [],
+        group: [],
+        court: [],
+        status: [],
+    });
+
+    const addArrayItem = (field: string, value: string) => {
+        if (value.trim()) {
+            setArrayFields(prev => ({
+                ...prev,
+                [field]: [...prev[field], value.trim()],
+            }));
+        }
+    };
+
+    const removeArrayItem = (field: string, index: number) => {
+        setArrayFields(prev => ({
+            ...prev,
+            [field]: prev[field].filter((_, i) => i !== index),
+        }));
+    };
+
+    const addDateFilter = () => {
+        setDateFilters(prev => [...prev, {}]);
+    };
+
+    const updateDateFilter = (index: number, type: 'lt' | 'eq' | 'gt', value: string) => {
+        setDateFilters(prev =>
+            prev.map((filter, i) => (i === index ? { ...filter, [type]: value } : filter))
+        );
+    };
+
+    const removeDateFilter = (index: number) => {
+        setDateFilters(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const buildQuery = () => {
+        const builtQuery: Partial<MatchQuery> = {
+            ...query,
+            orderBy: query.orderBy,
+            itemsPerPage: query.itemsPerPage || 20,
+            page: query.page || 0,
+        };
+
+        // Add array fields that have values
+        Object.entries(arrayFields).forEach(([key, values]) => {
+            if (values.length > 0) {
+                builtQuery[key as keyof MatchQuery] = values as any;
+            }
+        });
+
+        // Add date filters
+        if (dateFilters.length > 0) {
+            const validDateFilters = dateFilters
+                .map(filter => ({
+                    lt: filter.lt ? new Date(filter.lt) : undefined,
+                    eq: filter.eq ? new Date(filter.eq) : undefined,
+                    gt: filter.gt ? new Date(filter.gt) : undefined,
+                }))
+                .filter(filter => filter.lt || filter.eq || filter.gt);
+
+            if (validDateFilters.length > 0) {
+                builtQuery.date = validDateFilters;
+            }
+        }
+
+        return builtQuery;
+    };
+
+    const validateAndGetQuery = () => {
+        try {
+            const builtQuery = buildQuery();
+            const validatedQuery = matchQuerySchema.parse(builtQuery);
+            return { success: true, data: validatedQuery, error: null };
+        } catch (error) {
+            return { success: false, data: null, error: error as z.ZodError };
+        }
+    };
+
+    const ArrayFieldInput = ({ field, label }: { field: string; label: string }) => {
+        const [inputValue, setInputValue] = useState('');
+
+        return (
+            <div className="space-y-2">
+                <Label>{label}</Label>
+                <div className="flex gap-2">
+                    <Input
+                        value={inputValue}
+                        onChange={e => setInputValue(e.target.value)}
+                        placeholder={`Add ${label.toLowerCase()}`}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addArrayItem(field, inputValue);
+                                setInputValue('');
+                            }
+                        }}
+                    />
+                    <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                            addArrayItem(field, inputValue);
+                            setInputValue('');
+                        }}
+                    >
+                        <Plus className="h-4 w-4" />
+                    </Button>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                    {arrayFields[field].map((item, index) => (
+                        <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                            {item}
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto p-0 hover:bg-transparent"
+                                onClick={() => removeArrayItem(field, index)}
+                            >
+                                <X className="h-3 w-3" />
+                            </Button>
+                        </Badge>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    const StatusFieldInput = () => {
+        const [selectedStatus, setSelectedStatus] = useState('');
+
+        return (
+            <div className="space-y-2">
+                <Label>Status</Label>
+                <div className="flex gap-2">
+                    <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {Object.values(MatchStatus).map(status => (
+                                <SelectItem key={status} value={status}>
+                                    {status}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                            if (selectedStatus) {
+                                addArrayItem('status', selectedStatus);
+                                setSelectedStatus('');
+                            }
+                        }}
+                    >
+                        <Plus className="h-4 w-4" />
+                    </Button>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                    {arrayFields.status.map((item, index) => (
+                        <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                            {item}
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto p-0 hover:bg-transparent"
+                                onClick={() => removeArrayItem('status', index)}
+                            >
+                                <X className="h-3 w-3" />
+                            </Button>
+                        </Badge>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    const result = validateAndGetQuery();
+
+    return (
+        <div className="max-w-4xl mx-auto p-6 space-y-6">
+            <div className="text-center space-y-2">
+                <h1 className="text-3xl font-bold flex items-center justify-center gap-2">
+                    <Filter className="h-8 w-8" />
+                    Match Query Builder
+                </h1>
+                <p className="text-muted-foreground">
+                    Build complex queries for match data with filters, sorting, and pagination
+                </p>
+            </div>
+
+            <Tabs defaultValue="filters" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="filters">Filters</TabsTrigger>
+                    <TabsTrigger value="dates">Dates</TabsTrigger>
+                    <TabsTrigger value="sorting">Sorting</TabsTrigger>
+                    <TabsTrigger value="pagination">Pagination</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="filters" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Filter className="h-5 w-5" />
+                                Field Filters
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <ArrayFieldInput field="id" label="Match IDs" />
+                                <ArrayFieldInput field="team" label="Teams" />
+                                <ArrayFieldInput field="competition" label="Competitions" />
+                                <ArrayFieldInput field="season" label="Seasons" />
+                                <ArrayFieldInput field="group" label="Groups" />
+                                <ArrayFieldInput field="court" label="Courts" />
+                            </div>
+                            <StatusFieldInput />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="dates" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Calendar className="h-5 w-5" />
+                                Date Filters
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <Button type="button" onClick={addDateFilter} className="w-full">
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Date Filter
+                            </Button>
+
+                            {dateFilters.map((filter, index) => (
+                                <Card key={index} className="p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-medium">Date Filter {index + 1}</h4>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => removeDateFilter(index)}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div>
+                                            <Label>Before (lt)</Label>
+                                            <Input
+                                                type="datetime-local"
+                                                value={filter.lt || ''}
+                                                onChange={e =>
+                                                    updateDateFilter(index, 'lt', e.target.value)
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label>Equals (eq)</Label>
+                                            <Input
+                                                type="datetime-local"
+                                                value={filter.eq || ''}
+                                                onChange={e =>
+                                                    updateDateFilter(index, 'eq', e.target.value)
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <Label>After (gt)</Label>
+                                            <Input
+                                                type="datetime-local"
+                                                value={filter.gt || ''}
+                                                onChange={e =>
+                                                    updateDateFilter(index, 'gt', e.target.value)
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                </Card>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="sorting" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Sorting Options</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-2">
+                                <Label>Order by Date</Label>
+                                <Select
+                                    value={query.orderBy?.date || 'asc'}
+                                    onValueChange={(value: 'asc' | 'desc') =>
+                                        setQuery(prev => ({
+                                            ...prev,
+                                            orderBy: { date: value },
+                                        }))
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="asc">Ascending</SelectItem>
+                                        <SelectItem value="desc">Descending</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="pagination" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Pagination Settings</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Items per Page (5-500)</Label>
+                                    <Input
+                                        type="number"
+                                        min={5}
+                                        max={500}
+                                        value={query.itemsPerPage || 20}
+                                        onChange={e =>
+                                            setQuery(prev => ({
+                                                ...prev,
+                                                itemsPerPage: Number.parseInt(e.target.value) || 20,
+                                            }))
+                                        }
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Page (0-based)</Label>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={query.page || 0}
+                                        onChange={e =>
+                                            setQuery(prev => ({
+                                                ...prev,
+                                                page: Number.parseInt(e.target.value) || 0,
+                                            }))
+                                        }
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
+
+            <Separator />
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                        Query Result
+                        <Badge variant={result.success ? 'default' : 'destructive'}>
+                            {result.success ? 'Valid' : 'Invalid'}
+                        </Badge>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {result.success ? (
+                        <div className="space-y-4">
+                            <div>
+                                <h4 className="font-medium mb-2">Query String</h4>
+                                <div className="bg-muted p-4 rounded-lg">
+                                    <code className="text-sm break-all">
+                                        {qs.stringify(result.data, {
+                                            encode: false,
+                                        })}
+                                    </code>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="font-medium mb-2">JSON Object</h4>
+                                <pre className="bg-muted p-4 rounded-lg overflow-auto text-sm">
+                                    {JSON.stringify(result.data, null, 2)}
+                                </pre>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <p className="text-destructive font-medium">Validation Errors:</p>
+                            <pre className="bg-destructive/10 p-4 rounded-lg overflow-auto text-sm text-destructive">
+                                {result.error?.issues
+                                    .map(issue => `${issue.path.join('.')}: ${issue.message}`)
+                                    .join('\n')}
+                            </pre>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+}

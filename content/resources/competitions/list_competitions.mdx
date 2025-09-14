@@ -1,0 +1,71 @@
+# List Competitions
+
+Fetch a list of active competitions with their associated season data.
+
+## 🧾 Endpoint
+
+```http
+GET /competitions
+```
+
+**Base URL:** `https://api.thewfa.org.uk/competitions`
+
+## 📥 Query Parameters
+
+This endpoint supports **pagination** through the standard `baseListQuerySchema`.
+
+| Parameter       | Type    | Required | Description                         |
+|----------------|---------|----------|-------------------------------------|
+| `page`         | number  | No       | Page number (0-indexed). Default: 0 |
+| `itemsPerPage` | number  | No       | Items per page. Default: 20. Min: 5, Max: 500 |
+
+Example:
+
+```http
+GET /competitions?page=1&itemsPerPage=10
+```
+
+## ✅ Response
+
+```ts
+type CompetitionPartial = {
+  id: string;
+  name: string;
+  type: string;
+  logo: string | null;
+  activeSeason: {
+    id: string;
+    name: string;
+    startDate: string; // ISO date string
+    finishDate: string; // ISO date string
+  };
+};
+```
+
+```json
+{
+  "error": false,
+  "data": [
+    {
+      "id": "prem",
+      "name": "WFA National Premiership",
+      "type": "league",
+      "logo": "https://cdn.thewfa.org.uk/logos/prem.png",
+      "activeSeason": {
+        "id": "2024",
+        "name": "2024/25",
+        "startDate": "2024-08-01T00:00:00Z",
+        "finishDate": "2025-06-01T00:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+
+# ⚠️ Errors
+
+| Code | Message                 | Cause                                  |
+|------|-------------------------|----------------------------------------|
+| 400  | Query validation error  | Invalid query parameters               |
+| 500  | Internal Server Error   | Unexpected server error or crash       |

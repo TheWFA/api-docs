@@ -1,0 +1,133 @@
+# List Matches
+
+The `/matches` endpoint provides access to scheduled, live, and completed powerchair football matches. You can use this endpoint to list matches across seasons, competitions, and teams, with powerful filtering and pagination options.
+
+
+## Endpoint
+
+```http
+GET /matches
+```
+
+**Base URL:** `https://api.thewfa.org.uk/matches`
+
+
+## 🔍 Query Parameters
+
+You can control and filter the data returned using query parameters. These parameters are serialized into the URL using [`qs`](https://www.npmjs.com/package/qs) and follow the `MatchQuery` schema.
+
+### Available Filters
+
+All filters support multiple values and are passed as arrays.
+
+| Parameter       | Type                 | Description                                         |
+|----------------|----------------------|-----------------------------------------------------|
+| `id`           | `string[]`           | Filter by one or more match IDs                    |
+| `team`         | `string[]`           | Filter by team ID (home or away)                   |
+| `competition`  | `string[]`           | Filter by competition ID                           |
+| `season`       | `string[]`           | Filter by season ID                                |
+| `group`        | `string[]`           | Filter by match group ID                           |
+| `court`        | `string[]`           | Filter by court/location ID                        |
+| `status`       | `MatchStatus[]`      | Filter by one or more match statuses               |
+| `date`         | `[{ lt?, eq?, gt? }]`| Filter by match date comparisons (e.g., future, past) |
+
+### Sorting
+
+| Parameter     | Values         | Default |
+|---------------|----------------|---------|
+| `orderBy[date]` | `asc`, `desc` | `asc`   |
+
+### Pagination
+
+| Parameter       | Type   | Default | Notes                       |
+|----------------|--------|---------|-----------------------------|
+| `itemsPerPage` | number | `20`    | Min: `5`, Max: `500`        |
+| `page`         | number | `0`     | Starts from `0` (zero-indexed) |
+
+
+## MatchStatus Enum
+
+Use these values when filtering by status:
+
+- scheduled
+- first-half
+- half-time
+- second-half
+- full-time
+- completed
+- postponed
+- abandoned
+- extra-time-first-half
+- half-time-extra-time
+- extra-time-second-half
+- penalty-shootout
+
+
+## ✅ Response Format
+
+The response is an array of `Match` objects:
+
+### Match Object
+
+```ts
+type Match = {
+  homeTeam: TeamPartial;
+  awayTeam: TeamPartial;
+  homeScore: number;
+  awayScore: number;
+  homeScorePenalty: number;
+  awayScorePenalty: number;
+  status: MatchStatus;
+  scheduledFor: ISODateString;
+  times: {
+    firstHalfStartedAt: ISODateString;
+    secondHalfStartedAt: ISODateString;
+    firstHalfExtraTimeStartedAt: ISODateString;
+    secondHalfExtraTimeStartedAt: ISODateString;
+  };
+  competition: CompetitionPartial;
+  season: SeasonPartial;
+  court?: Court;
+  group?: {
+    id: string;
+    competition: string;
+    name: string;
+  };
+  officials: {
+    referee?: Person;
+    assistant1?: Person;
+    assistant2?: Person;
+    fourthOfficial?: Person;
+  };
+  streamLink?: string;
+};
+```
+
+## 🧪 Example Request
+
+```http
+GET /matches?team=team123&status=completed&orderBy[date]=desc&page=0&itemsPerPage=10
+```
+
+## 💡 Notes
+- Dates are ISO 8601 strings (YYYY-MM-DDTHH:mm:ss.sssZ)
+- Match times (e.g., firstHalfStartedAt) are present if known; otherwise null
+- Pagination is zero-based (page 0 is the first page)
+- Combine multiple filters to refine results (e.g., team + season + status)
+
+## 📦 Using with the API Client
+
+If you’re using the NPM package @thewfa/api-client:
+
+```ts
+import { createClient } from '@thewfa/api-client';
+
+const client = createClient();
+
+const matches = await client.matches.get({
+  status: ['completed'],
+  competition: ['prem-2024'],
+  itemsPerPage: 5,
+  page: 0,
+});
+```

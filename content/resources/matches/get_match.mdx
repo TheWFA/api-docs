@@ -1,0 +1,170 @@
+# Get Match
+
+Retrieve full match details, including team lineups and a chronological list of match events.
+
+## 🧾 Endpoint
+
+```http
+GET /matches/:id
+```
+
+Base URL: `https://api.thewfa.org.uk/matches/:id`
+
+## 🔢 Path Parameters
+
+| Parameter       | Type     | Required | Description                         |
+|-----------------|----------|----------|-------------------------------------|
+| `id`            | string   | Yes      | The ID of the match to retrieve     |
+
+## ✅ Response
+
+Type
+
+```ts
+type FullMatch = {
+    details: Match;
+    homeLineups: MatchPlayer[];
+    awayLineups: MatchPlayer[];
+    events: MatchEvent[];
+};
+```
+
+Subtypes
+
+```ts
+type MatchPlayer = {
+    person: Person;
+    number: number;
+    teamId: string;
+    position: string | null;
+    iscaptain: boolean | null;
+};
+
+type Person = {
+    id: string;
+    first_name: string;
+    last_name: string;
+    known_as: string;
+};
+
+type MatchEvent =
+    | ({ type: ‘goal’ } & BaseMatchEvent & GoalMatchEvent)
+    | ({ type: ‘yellow_card’ } & BaseMatchEvent & CardMatchEvent)
+    | ({ type: ‘red_card’ } & BaseMatchEvent & CardMatchEvent)
+    | ({ type: ‘substitution’ } & BaseMatchEvent & SubstitutionMatchEvent);
+
+type BaseMatchEvent = {
+    createdAt: string; // ISO 8601
+    time?: number | null;
+    matchPeriod?: string | null;
+};
+
+type GoalMatchEvent = {
+    player: Person;
+    teamId: string;
+    penalty: boolean;
+    goaltype: ‘goal’ | ‘own-goal’;
+};
+
+type CardMatchEvent = {
+    player: Person;
+    teamId: string;
+};
+
+type SubstitutionMatchEvent = {
+    playerOn: Person;
+    playerOff: Person;
+    teamId: string;
+};
+```
+
+Example
+
+```json
+{
+    error: false,
+    data: {
+        details: {
+            id: 'match_123',
+            date: '2025-05-20T14:00:00Z',
+            // other match field see the list matches resource
+        },
+        homeLineups: [
+            {
+                person: {
+                    id: 'p1',
+                    first_name: 'Alice',
+                    last_name: 'Smith',
+                    known_as: 'Alice',
+                },
+                number: 7,
+                position: 'GK',
+                captain: true,
+            },
+        ],
+        awayLineups: [
+            {
+                person: {
+                    id: 'p2',
+                    first_name: 'Bob',
+                    last_name: 'Jones',
+                    known_as: 'Bob',
+                },
+                number: 9,
+                position: null,
+                captain: false,
+            },
+        ],
+        events: [
+            {
+                type: 'goal',
+                createdAt: '2025-05-20T14:10:00Z',
+                time: 10,
+                matchPeriod: '1H',
+                player: {
+                    id: 'p1',
+                    firstName: 'Alice',
+                    lastName: 'Smith',
+                    knownAs: 'Alice',
+                },
+                teamId: 'team_001',
+                penalty: false,
+                goaltype: 'goal',
+            },
+            {
+                type: 'substitution',
+                createdAt: '2025-05-20T14:40:00Z',
+                time: 40,
+                matchPeriod: '1H',
+                playerOn: {
+                    id: 'p3',
+                    firstName: 'Charlie',
+                    lastName: 'Lee',
+                    knownAs: 'Charlie',
+                },
+                playerOff: {
+                    id: 'p2',
+                    firstName: 'Bob',
+                    lastName: 'Jones',
+                    knownAs: 'Bob',
+                },
+                teamId: 'team_002',
+            },
+        ],
+    },
+};
+
+```
+
+## ⚠️ Error Responses
+| Code | Message               | Cause                                  |
+|------|-----------------------|----------------------------------------|
+| 400  | Invalid ID            | Missing or malformed `id` parameter    |
+| 404  | Match not found       | No match found with the given ID       |
+| 500  | Internal Server Error | Unexpected server error                |
+
+## 📝 Notes
+- Lineups are split by team, based on the team ID in the match data.
+- Events are ordered by match time and period.
+- If a player does not appear in the match, `position` may be `null`.
+- Events with type `goal` include penalty and own-goal information.
