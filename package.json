@@ -1,12 +1,11 @@
 {
     "name": "@thewfa/docs",
-    "module": "index.ts",
     "type": "module",
     "private": true,
     "scripts": {
         "dev": "next",
-        "build": "next build -p 3002",
-        "start": "next start -p 3002",
+        "build": "next build",
+        "start": "next start",
         "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind"
     },
     "devDependencies": {
